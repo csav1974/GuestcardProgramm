@@ -1,9 +1,12 @@
-
+import requests
 import fitz  # PyMuPDF
 from PIL import Image
 import os
 from datetime import datetime
 from pathlib import Path
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import time
 
 def create_output_folder(base_folder):
     # Erstelle einen Ordner mit dem aktuellen Datum als Namen
@@ -65,34 +68,78 @@ def process_images(folder):
             # Lösche das ursprüngliche Bild
             os.remove(image_path)
 
-def get_latest_pdf_path(folder_path):
-    # Überprüfe, ob der Ordner existiert
-    if not os.path.exists(folder_path):
-        raise FileNotFoundError(f"Der Ordner '{folder_path}' existiert nicht.")
 
-    # Durchsuche den Ordner nach PDF-Dateien
-    pdf_files = [file for file in os.listdir(folder_path) if file.lower().endswith('.pdf')]
+def open_browser_and_login(url, username, password):
+    # Pfad zu deinem ChromeDriver
+    chromedriver_path = r'C:\Users\gkuen\PycharmProjects\GuestcardProgramm\chromedriver-win64\chromedriver.exe'  # Ersetze durch den tatsächlichen Pfad
+    driver = webdriver.Chrome(executable_path=chromedriver_path)
 
-    # Überprüfe, ob PDF-Dateien gefunden wurden
-    if not pdf_files:
-        raise FileNotFoundError(f"Im Ordner '{folder_path}' wurden keine PDF-Dateien gefunden.")
+    # Navigiere zur URL
+    driver.get(url)
 
-    # Erhalte die neueste PDF-Datei basierend auf dem Änderungsdatum
-    latest_pdf_path = max(pdf_files, key=lambda file: os.path.getmtime(os.path.join(folder_path, file)))
+    # Warte, bis die Seite vollständig geladen ist
+    time.sleep(2)
 
-    # Gib den vollen Dateipfad zur neuesten PDF-Datei zurück
-    return os.path.join(folder_path, latest_pdf_path)
+    # Finde das Benutzername- und Passwortfeld und gib die Werte ein
+    username_field = driver.find_element_by_name("UserName")  # Passe an den tatsächlichen Namen des Feldes an
+    password_field = driver.find_element_by_name("Password")  # Passe an den tatsächlichen Namen des Feldes an
+
+    username_field.send_keys(username)
+    password_field.send_keys(password)
+
+    # Optional: Drücke die Eingabetaste oder klicke auf den Login-Button
+    password_field.send_keys(Keys.RETURN)
+
+    print("Navigiere zur PDF der WelcomeCards und schließe dann ale anderen Tabs\n")
+    input("Drücke Enter, um den Browser zu schließen und die WelcomeCards zu erstellen...")
+
+    current_url = driver.current_url
+    # Schließe den Browser, wenn Enter gedrückt wird
+    driver.quit()
+
+    return current_url
+
+
+def download_pdf_from_url(pdf_url, save_path):
+    try:
+        # PDF von der URL herunterladen
+        response = requests.get(pdf_url)
+
+        # Überprüfen, ob die Anfrage erfolgreich war
+        if response.status_code == 200:
+            # Inhalt des PDFs speichern
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            print(f"PDF wurde erfolgreich heruntergeladen und unter {save_path} gespeichert.")
+        else:
+            print("Fehler beim Herunterladen des PDFs: Status Code", response.status_code)
+    except Exception as e:
+        print("Fehler beim Herunterladen des PDFs:", str(e))
+
 
 if __name__ == "__main__":
-    folder_path = r"C:\Users\gkuen\Downloads"  # Passe den Pfad zu deinem Ordner an
-    pdf_path = get_latest_pdf_path(folder_path)
+
+    # Dieser CodeBlock ist für die Browser Interaktion verandtwortlich
+
+    url = "https://webclient4.deskline.net/IBK/de/login?dbOv=MT6&ReturnUrl=%2FIBK%2Fde%2Fvisitorregistrationforms%2Foverview%2F126f500b-72a7-45e1-a2b9-784d449fcdd7%3FdbOv%3DMT6"  # Ersetze durch die tatsächliche Login-URL
+    username = "VMIBKKUJO"  # Ersetze durch den tatsächlichen Benutzernamen
+    password = "start"  # Ersetze durch das tatsächliche Passwort
+    url_of_GuestcardPDF = open_browser_and_login(url, username, password) # URL der Seite die bei beenden des Programms offen war
+
+    # Dieser CodeBlock erstellt einen neuen Ordner mit heutigem Datum und speichert die PDF im passenden Unterordner
+
+    current_date = datetime.now().strftime("%Y-%m-%d") # Aktuelles Datum für Ordner Name
     base_output_folder = r"C:\Users\gkuen\Pictures\Welcomecards"  # Passe den Basis-Ausgabeordner an
-    resolution = 300  # Passe die gewünschte Auflösung an
+    input_folder_PDF = os.path.join(base_output_folder, "PDFs") # AusgabeOrdner für PDF
+    fileName_PDF = current_date + ".pdf" # Name der Erstellten PDF
+    download_pdf_from_url(url_of_GuestcardPDF, os.path.join(input_folder_PDF, fileName_PDF)) # Lädt PDF herunter und speichert sie im darüber angegebenen Ordner
+    folder_path = input_folder_PDF  # Passe den Pfad zu deinem Ordner an
+    pdf_path = os.path.join(input_folder_PDF, fileName_PDF) # Pfad zum gearde erstellten PDF
+    input_folder_GuestCards = os.path.join(base_output_folder, current_date)  # Name des Ordners für Welcomecards
 
-    pdf_to_images(pdf_path, base_output_folder, resolution)
+    # Dieser CodeBlock verarbeitet die PDF zu fertigen WelcomeCards
 
-    # Name des Ordners
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    input_folder = os.path.join(base_output_folder, current_date)
+    resolution = 300  # Passe die gewünschte Auflösung der erstellten Bilder an
+    pdf_to_images(pdf_path, base_output_folder, resolution) # Erstellt Bilder von der PDF
+    process_images(input_folder_GuestCards) # Schneidet die erstellten Bilder richtig zu
 
-    process_images(input_folder)
